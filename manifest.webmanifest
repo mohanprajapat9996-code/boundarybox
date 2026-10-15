@@ -1,7 +1,7 @@
 {
   "name": "BoundaryBox — Cricket Design Store",
   "short_name": "BoundaryBox",
-  "description": "Cricket poster templates, PixelLab PLP projects and digital downloads.",
+  "description": "Cricket jerseys, score cards, poster templates and digital downloads.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,6 +9,8 @@
   "theme_color": "#0b1711",
   "orientation": "portrait",
   "icons": [
+    {"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},
     {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
   ]
 }
