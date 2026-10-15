@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07120d">
+<title>BoundaryBox | Preview</title>
+
+<style>
+:root {
+  --bg: #07120d;
+  --card: #102119;
+  --green: #a6f36b;
+  --text: #f3f7f2;
+  --muted: #aab8ad;
+  --line: #294234;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, Arial, sans-serif;
+}
+
+.container {
+  max-width: 1100px;
+  margin: auto;
+  padding: 18px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0 25px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  background: var(--green);
+  color: #07120d;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  font-size: 26px;
+  font-weight: 900;
+}
+
+h1, h2, h3, p {
+  margin-top: 0;
+}
+
+.brand h1 {
+  font-size: 21px;
+  margin-bottom: 2px;
+}
+
+.small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+button {
+  cursor: pointer;
+  padding: 11px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  font: inherit;
+  font-weight: 750;
+}
+
+.primary {
+  background: var(--green);
+  color: #07120d;
+  border-color: var(--green);
+}
+
+.secondary {
+  background: #14271b;
+  color: var(--text);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 20px;
+  align-items: center;
+  padding: 28px 0 35px;
+}
+
+.eyebrow {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.hero h2 {
+  font-size: clamp(36px, 6vw, 62px);
+  line-height: 1.02;
+  margin: 12px 0;
+}
+
+.hero h2 span {
+  color: var(--green);
+}
+
+.hero p {
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.hero-art {
+  min-height: 250px;
+  border: 1px solid #426349;
+  border-radius: 25px;
+  background:
+    radial-gradient(circle at 50% 40%, #36683d, transparent 55%),
+    linear-gradient(145deg, #183d24, #0d1b13);
+  display: grid;
+  place-items: center;
+  font-size: 100px;
+  box-shadow: 0 15px 50px #0005;
+}
+
+.promo {
+  background: linear-gradient(110deg, #173c24, #102119);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px;
+  margin: 10px 0 35px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.promo p {
+  color: var(--muted);
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.section-title h3 {
+  margin: 5px 0;
+  font-size: 24px;
+}
+
+.search {
+  width: 100%;
+  background: #0c1b12;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 14px;
+  font-size: 15px;
+  outline: none;
+}
+
+.search:focus {
+  border-color: var(--green);
+}
+
+.categories {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 14px 0 20px;
+}
+
+.chip {
+  white-space: nowrap;
+  background: #13271b;
+  color: var(--text);
+  border-radius: 30px;
+  padding: 9px 14px;
+}
+
+.chip.active {
+  background: var(--green);
+  color: #07120d;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.product {
+  border: 1px solid var(--line);
+  background: linear-gradient(160deg, #14291c, #0c1911);
+  border-radius: 18px;
+  overflow: hidden;
+  transition: transform .2s, border-color .2s;
+}
+
+.product:hover {
+  transform: translateY(-4px);
+  border-color: var(--green);
+}
+
+.art {
+  height: 165px;
+  display: grid;
+  place-items: center;
+  font-size: 54px;
+  background:
+    radial-gradient(circle at center, #315e35, transparent 70%),
+    #112519;
+}
+
+.product-content {
+  padding: 15px;
+}
+
+.badge {
+  display: inline-block;
+  color: var(--green);
+  background: #243d29;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 1px;
+}
+
+.product h4 {
+  margin: 12px 0 5px;
+  font-size: 16px;
+}
+
+.product p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  min-height: 38px;
+}
+
+.product button {
+  width: 100%;
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  margin-top: 45px;
+  padding: 25px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media(max-width: 650px) {
+  .container {
+    padding: 14px;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    padding-top: 15px;
+  }
+
+  .hero h2 {
+    font-size: 43px;
+  }
+
+  .hero-art {
+    min-height: 145px;
+    font-size: 70px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .art {
+    height: 125px;
+    font-size: 43px;
+  }
+
+  .product-content {
+    padding: 11px;
+  }
+
+  .product h4 {
+    font-size: 14px;
+  }
+
+  .product button {
+    padding: 10px 5px;
+    font-size: 12px;
+  }
+}
+
+@media(max-width: 350px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+  <div class="brand">
+    <div class="logo">B</div>
+    <div>
+      <h1>BoundaryBox</h1>
+      <div class="small">CRICKET DESIGN STORE</div>
+    </div>
+  </div>
+  <button class="secondary" id="shareButton">↗ Share</button>
+</header>
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">YOUR CREATIVE CRICKET HUB</div>
+    <h2>Make every match<br><span>look legendary.</span></h2>
+    <p>
+      Discover cricket posters, PixelLab projects, wallpapers
+      and digital resources made for creative fans.
+    </p>
+    <button class="primary" onclick="document.getElementById('collection').scrollIntoView({behavior:'smooth'})">
+      Explore designs ↓
+    </button>
+  </div>
+
+  <div class="hero-art">🏏</div>
+</section>
+
+<section class="promo">
+  <div>
+    <strong>🏏 Crico Gaming™</strong>
+    <p>Cricket gaming, creative edits and new designs.</p>
+  </div>
+  <button class="primary" id="youtubeButton">▶ Visit YouTube</button>
+</section>
+
+<section id="collection">
+  <div class="section-title">
+    <div>
+      <div class="eyebrow">THE COLLECTION</div>
+      <h3>Explore designs</h3>
+    </div>
+    <span class="small" id="resultCount">6 designs</span>
+  </div>
+
+  <input
+    class="search"
+    type="search"
+    id="searchBox"
+    placeholder="🔍 Search posters, PLP, PNG..."
+    aria-label="Search designs"
+  >
+
+  <div class="categories" id="categories">
+    <button class="chip active" data-category="All">All designs</button>
+    <button class="chip" data-category="Posters">Posters</button>
+    <button class="chip" data-category="PLP">PLP files</button>
+    <button class="chip" data-category="Wallpapers">Wallpapers</button>
+    <button class="chip" data-category="PNG">PNG images</button>
+    <button class="chip" data-category="PDF">PDF files</button>
+  </div>
+
+  <div class="grid" id="productGrid">
+
+    <article class="product" data-name="IPL Match Day Poster" data-category="Posters">
+      <div class="art">🏆</div>
+      <div class="product-content">
+        <span class="badge">POSTER DESIGN</span>
+        <h4>IPL Match Day Poster</h4>
+        <p>Cricket poster design preview for your next creative edit.</p>
+        <button class="primary previewDownload">Preview only</button>
+      </div>
+    </article>
+
+    <article class="product" data-name="Player Poster Template" data-category="Posters">
+      <div class="art">🏏</div>
+      <div class="product-content">
+        <span class="badge">PLAYER POSTER</span>
+        <h4>Player Poster Template</h4>
+        <p>A bold layout concept for cricket player posters.</p>
+        <button class="primary previewDownload">Preview only</button>
+      </div>
+    </article>
+
+    <article class="product" data-name="PixelLab PLP Project" data-category="PLP">
+      <div class="art">🎨</div>
+      <div class="product-content">
+        <span class="badge">PLP PROJECT</span>
+        <h4>PixelLab PLP Project</h4>
+        <p>Layered project concept for creative editing.</p>
+        <button class="primary previewDownload">Preview only</button>
+      </div>
+    </article>
+
+    <article class="product" data-name="Cricket Wallpaper Pack" data-category="Wallpapers">
+      <div class="art">🖼️</div>
+      <div class="product-content">
+        <span class="badge">WALLPAPERS</span>
+        <h4>Cricket Wallpaper Pack</h4>
+        <p>Wallpapers for cricket fans and mobile screens.</p>
+        <button class="primary previewDownload">Preview only</button>
+      </div>
+    </article>
+
+    <article class="product" data-name="Transparent PNG Pack" data-category="PNG">
+      <div class="art">✨</div>
+      <div class="product-content">
+        <span class="badge">PNG IMAGES</span>
+        <h4>Transparent PNG Pack</h4>
+        <p>Transparent graphic assets for poster editing.</p>
+        <button class="primary previewDownload">Preview only</button>
+      </div>
+    </article>
+
+    <article class="product" data-name="Cricket Graphics PDF" data-category="PDF">
+      <div class="art">📄</div>
+      <div class="product-content">
+        <span class="badge">PDF RESOURCE</span>
+        <h4>Cricket Graphics PDF</h4>
+        <p>A sample card for downloadable design resources.</p>
+        <button class="primary previewDownload">Preview only</button>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<footer>
+  <strong>BoundaryBox</strong><br>
+  Independent cricket design resource library.<br>
+  Preview version — sample products only.
+</footer>
+
+</div>
+
+<script>
+const searchBox = document.getElementById('searchBox');
+const cards = [...document.querySelectorAll('.product')];
+const categoryButtons = [...document.querySelectorAll('[data-category]')];
+let activeCategory = 'All';
+
+function filterCards() {
+  const query = searchBox.value.trim().toLowerCase();
+  let visible = 0;
+
+  cards.forEach(card => {
+    const name = (card.dataset.name + ' ' + card.innerText).toLowerCase();
+    const category = card.dataset.category;
+    const matchesSearch = name.includes(query);
+    const matchesCategory = activeCategory === 'All' || category === activeCategory;
+    card.style.display = matchesSearch && matchesCategory ? '' : 'none';
+    if (matchesSearch && matchesCategory) visible++;
+  });
+
+  document.getElementById('resultCount').textContent = visible + ' designs';
+}
+
+searchBox.addEventListener('input', filterCards);
+
+categoryButtons.forEach(button => {
+  button.addEventListener('click', () => {
+    activeCategory = button.dataset.category;
+    categoryButtons.forEach(item => item.classList.toggle('active', item === button));
+    filterCards();
+  });
+});
+
+document.querySelectorAll('.previewDownload').forEach(button => {
+  button.addEventListener('click', () => {
+    alert('This is a design preview only. Your live downloads remain on the main BoundaryBox website.');
+  });
+});
+
+document.getElementById('youtubeButton').addEventListener('click', () => {
+  window.open('https://youtube.com/@crico.gaming', '_blank', 'noopener,noreferrer');
+});
+
+document.getElementById('shareButton').addEventListener('click', async () => {
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'BoundaryBox',
+        text: 'Explore cricket designs and digital resources.',
+        url: location.href
+      });
+    } else {
+      await navigator.clipboard.writeText(location.href);
+      alert('Preview link copied!');
+    }
+  } catch (error) {
+    // Sharing was cancelled or is not available.
+  }
+});
+
+filterCards();
+</script>
+</body>
+          </html>
