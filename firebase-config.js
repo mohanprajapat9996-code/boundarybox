@@ -1,12 +1,12 @@
 // Paste your Firebase Web App configuration here (Firebase Console > Project settings > Your apps).
 // Firebase web config is not a password. Protect data with the included Firestore/Storage rules.
 export const firebaseConfig = {
-  apiKey: "PASTE_API_KEY_HERE",
-  authDomain: "PASTE_PROJECT_ID_HERE.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID_HERE",
-  storageBucket: "PASTE_PROJECT_ID_HERE.firebasestorage.app",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID_HERE",
-  appId: "PASTE_APP_ID_HERE"
+  apiKey: "AIzaSyD1ROI4t_oxjYxVBRXihrWLw3_D5UBb-h8",
+  authDomain: "boundarybox-406db.firebaseapp.com",
+  projectId: "boundarybox-406db",
+  storageBucket: "boundarybox-406db.firebasestorage.app",
+  messagingSenderId: "19138899737",
+  appId: "1:19138899737:web:916d3632aa34b1f3505f88"
 };
 // Must exactly match the administrator email used in firestore.rules and storage.rules.
-export const ADMIN_EMAIL = "YOUR_ADMIN_EMAIL@example.com";
+export const ADMIN_EMAIL = "mohanprajapat9996@gmail.com";
