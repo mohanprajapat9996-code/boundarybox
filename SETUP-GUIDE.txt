@@ -1,0 +1,68 @@
+BOUNDARYBOX — FULL APP STARTER
+==============================
+This is a Firebase-backed responsive website / installable Progressive Web App (PWA) starter. It is NOT yet deployed and is not yet a Google Play Store APK. Firebase project setup is required before the online database, login and uploads work.
+
+WHAT'S INCLUDED
+- Responsive cricket-themed product catalogue
+- Search and category filters
+- Firebase Firestore live product catalogue
+- Firebase email/password administrator sign-in
+- Admin-only create/edit/delete products
+- Upload thumbnails and digital files to Firebase Storage
+- External download links
+- PWA manifest and service worker (installable from supported browsers)
+- Firestore and Storage security rules
+
+IMPORTANT SAFETY
+- Do not publish before configuring the admin email in THREE places: firebase-config.js, firestore.rules, storage.rules.
+- Keep Firestore/Storage rules deployed. Do not change them to allow public writes.
+- Firebase web config is normally public; the security rules and Auth protect data. Never place service-account private keys in this folder.
+- Public can read catalogue products and download files in this starter. Do not upload private or copyrighted files without permission.
+- The Storage rules cap thumbnail files at 5 MB and downloads at 50 MB. Firebase quotas/pricing can change; check the current Firebase plan before uploading many or large files.
+
+STEP 1 — CREATE FIREBASE PROJECT
+1. Open https://console.firebase.google.com/ and create a project.
+2. Add a Web App to the project and copy its Firebase config values.
+3. Open Authentication > Sign-in method and enable Email/Password.
+4. Open Authentication > Users and add your administrator user with your email and a strong password.
+5. Open Firestore Database and create a database (production mode is fine).
+6. Open Storage and set up a bucket. If Firebase asks for billing or a plan upgrade, review costs before proceeding.
+
+STEP 2 — CONFIGURE THE APP
+1. Open firebase-config.js in a text editor.
+2. Replace each PASTE_... placeholder with values from Project settings > Your apps.
+3. Set ADMIN_EMAIL to the exact administrator email used in Firebase Authentication.
+4. In firestore.rules, replace YOUR_ADMIN_EMAIL@example.com with the same exact email.
+5. In storage.rules, replace YOUR_ADMIN_EMAIL@example.com with the same exact email.
+6. Keep these values exactly consistent. Email comparisons in client UI are case-insensitive, but the rules use the email claim exactly.
+
+STEP 3 — PUBLISH THE WEBSITE
+Recommended easy route: Firebase Hosting.
+1. Install Node.js on a computer, then run: npm install -g firebase-tools
+2. In this project folder, run: firebase login
+3. Run: firebase use --add   (select the project you created)
+4. Run: firebase deploy
+This deploys Hosting and the rules described by firebase.json. Verify the project and billing setup before deployment. You can alternatively host the static files on another HTTPS host, but deploy the Firestore and Storage rules in Firebase Console separately.
+
+STEP 4 — CREATE PRODUCTS
+1. Open your published HTTPS site.
+2. Tap Admin login.
+3. Sign in with the admin email/password created in Firebase Authentication.
+4. Add a product name, category and file type.
+5. Upload a thumbnail and/or file, or paste an external download URL.
+6. Tap Publish product. The catalogue should update across devices.
+
+STEP 5 — INSTALL ON ANDROID
+1. Open the published HTTPS website in Chrome on Android.
+2. Open Chrome menu (⋮) and choose Install app or Add to Home screen (label depends on device/browser).
+3. The app icon will be added to the phone. It needs an internet connection for live products and downloads.
+
+GOOGLE PLAY STORE
+This project is a PWA and does not itself include a signed Android APK/AAB or Play Store listing. To publish to Google Play, you will need to package the PWA (for example with a Trusted Web Activity/Bubblewrap workflow), create signing credentials, test the Android package, and complete Google Play Console registration and policy requirements. This may involve fees and additional setup.
+
+TROUBLESHOOTING
+- “Setup needed”: check that firebase-config.js has no PASTE_ placeholders and ADMIN_EMAIL is set.
+- Permission denied: ensure the email in both rule files matches the signed-in Firebase Auth email, then deploy rules.
+- Upload failure: check Storage is enabled, the file-size limits, and Firebase plan/quota.
+- Website must run on HTTPS or localhost for module imports and PWA service workers. Opening index.html directly as a file will not connect properly.
+- If changing rules, never use allow read, write: if true for the whole database/bucket on a public site.
