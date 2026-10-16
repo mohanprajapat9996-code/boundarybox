@@ -59,8 +59,8 @@ const isAdminPage = () =>
 const configReady =
   Object.values(firebaseConfig).every(
     v => typeof v === 'string' &&
-    v.length > 0 &&
-    !v.includes('PASTE_')
+      v.length > 0 &&
+      !v.includes('PASTE_')
   ) &&
   !ADMIN_EMAIL.includes('YOUR_ADMIN');
 
@@ -85,6 +85,600 @@ function esc(s = '') {
 
 function validUrl(s) {
   try {
+    const u = new URL(s);
+
+    return ['http:', 'https:'].includes(u.protocol)
+      ? u.href
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+function validImage(s) {
+  return typeof s === 'string' &&
+    (
+      s.startsWith('data:image/jpeg;base64,') ||
+      s.startsWith('data:image/png;base64,') ||
+      s.startsWith('data:image/webp;base64,') ||
+      !!validUrl(s)
+    )
+    ? s
+    : '';
+}
+
+let selectedCoverData = '';
+
+async function compressCover(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    throw new Error('Choose a JPG, PNG, or WebP image.');
+  }
+
+  const bitmap = await createImageBitmap(file);
+
+  let w = bitmap.width;
+  let h = bitmap.height;
+
+  const maxSide = 1000;
+
+  if (Math.max(w, h) > maxSide) {
+    const scale = maxSide / Math.max(w, h);
+
+    w = Math.round(w * scale);
+    h = Math.round(h * scale);
+  }
+
+  const canvas = document.createElement('canvas');
+
+  canvas.width = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext('2d');
+
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close?.();
+
+  let data = canvas.toDataURL('image/jpeg', 0.78);
+  let quality = 0.68;
+
+  while (data.length > 620000 && quality >= 0.35) {
+    data = canvas.toDataURL('image/jpeg', quality);
+    quality -= 0.08;
+  }
+
+  if (data.length > 700000) {
+    throw new Error(
+      'Image is too large after compression. Please choose a smaller image.'
+    );
+  }
+
+  return data;
+}
+
+function setCoverPreview(data) {
+  selectedCoverData = data || '';
+
+  $('coverPreviewWrap').classList.toggle(
+    'hidden',
+    !selectedCoverData
+  );
+
+  if (selectedCoverData) {
+    $('coverPreview').src = selectedCoverData;
+  }
+}
+
+function showConfigError() {
+  $('count').textContent = 'Setup needed';
+
+  $('products').innerHTML = `
+    <div class="empty">
+      <strong>Almost ready!</strong><br>
+      Connect Firebase using the SETUP-GUIDE.txt file included
+      with this project, then reload this page.
+    </div>
+  `;
+
+  $('adminToggle').textContent = 'Admin setup';
+}
+
+function renderChips() {
+  $('chips').innerHTML = cats.map(c => `
+    <button
+      class="chip ${activeCategory === c ? 'active' : ''}"
+      data-cat="${esc(c)}"
+    >${esc(c)}</button>
+  `).join('');
+
+  $('chips')
+    .querySelectorAll('[data-cat]')
+    .forEach(b => {
+      b.onclick = () => {
+        activeCategory = b.dataset.cat;
+        renderChips();
+        renderProducts();
+      };
+    });
+}
+
+function renderProducts() {
+  const q = $('search').value.trim().toLowerCase();
+
+  let list = products.filter(p =>
+    (activeCategory === 'All' || p.category === activeCategory) &&
+    `${p.name} ${p.description || ''} ${p.type || ''} ${p.category || ''}`
+      .toLowerCase()
+      .includes(q)
+  );
+
+  if ($('sort').value === 'az') {
+    list.sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    list.sort(
+      (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
+    );
+  }
+
+  $('count').textContent =
+    `${list.length} item${list.length === 1 ? '' : 's'}`;
+
+  if (!list.length) {
+    $('products').innerHTML = `
+      <div class="empty">
+        <div style="font-size:32px;margin-bottom:8px">🏏</div>
+        <strong>No designs found yet</strong><br>
+        <span class="small">
+          New templates will appear here when the administrator publishes them.
+        </span>
+      </div>
+    `;
+
+    return;
+  }
+
+  const showAdminButtons =
+    isAdminPage() &&
+    !!user &&
+    user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  $('products').innerHTML = list.map(p => {
+    const image = validImage(p.thumbnailUrl || '');
+
+    const thumb = image
+      ? `<img
+           src="${esc(image)}"
+           alt="${esc(p.name)} thumbnail"
+           loading="lazy"
+         >`
+      : `
+        <div>
+          ${
+            p.type === 'PDF'
+              ? '📄'
+              : p.type === 'PNG' || p.type === 'JPG'
+                ? '🖼️'
+                : p.type === 'PLP'
+                  ? '🎨'
+                  : '🏏'
+          }
+          <div style="font-size:11px;letter-spacing:2px;margin-top:4px">
+            ${esc(p.type || 'FILE')}
+          </div>
+        </div>
+      `;
+
+    const adminButtons = showAdminButtons
+      ? `
+        <div class="cardbuttons" style="margin-top:7px">
+          <button
+            class="btn-secondary"
+            data-edit="${esc(p.id)}"
+          >Edit</button>
+
+          <button
+            class="btn-danger"
+            data-delete="${esc(p.id)}"
+          >Delete</button>
+        </div>
+      `
+      : '';
+
+    return `
+      <article class="card">
+        <div class="thumb">${thumb}</div>
+
+        <div class="cardbody">
+          <span class="badge">
+            ${esc(p.category || 'Other Digital Files')}
+          </span>
+
+          <h4>${esc(p.name)}</h4>
+
+          <p>${esc(p.description || 'Digital download')}</p>
+
+          <div class="cardbuttons">
+            <button
+              class="btn-primary"
+              data-get="${esc(p.id)}"
+            >Get file ↗</button>
+          </div>
+
+          ${adminButtons}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  $('products')
+    .querySelectorAll('[data-get]')
+    .forEach(b => {
+      b.onclick = () => {
+        const p = products.find(x => x.id === b.dataset.get);
+        const url = validUrl(p?.downloadUrl || '');
+
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+          toast('Download link is not available.');
+        }
+      };
+    });
+
+  $('products')
+    .querySelectorAll('[data-edit]')
+    .forEach(b => {
+      b.onclick = () => startEdit(b.dataset.edit);
+    });
+
+  $('products')
+    .querySelectorAll('[data-delete]')
+    .forEach(b => {
+      b.onclick = () => removeProduct(b.dataset.delete);
+    });
+}
+
+function listenProducts() {
+  if (unsubscribe) {
+    unsubscribe();
+  }
+
+  unsubscribe = onSnapshot(
+    query(collection(db, 'products'), orderBy('createdAt', 'desc')),
+
+    snap => {
+      products = snap.docs.map(d => {
+        const x = d.data();
+
+        return {
+          ...x,
+          id: d.id,
+          createdAtMs: x.createdAt?.toMillis?.() || 0
+        };
+      });
+
+      renderProducts();
+    },
+
+    err => {
+      console.error(err);
+
+      $('products').innerHTML = `
+        <div class="empty">
+          Could not load products. Check Firestore setup and security rules.
+        </div>
+      `;
+
+      toast('Database error: ' + err.code);
+    }
+  );
+}
+
+function openAdmin() {
+  $('adminPanel').classList.toggle('hidden');
+
+  if (!$('adminPanel').classList.contains('hidden')) {
+    $('adminPanel').scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+$('adminToggle').onclick = () => {
+  openAdmin();
+};
+
+$('search').oninput = renderProducts;
+$('sort').onchange = renderProducts;
+
+$('shareTop').onclick = async () => {
+  try {
+    if (navigator.share) {
+      await navigator.share({
+        title: 'BoundaryBox',
+        text: 'Cricket templates and digital assets',
+        url: location.href
+      });
+    } else {
+      await navigator.clipboard.writeText(location.href);
+      toast('Page link copied');
+    }
+  } catch {}
+};
+
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+
+  try {
+    await signInWithEmailAndPassword(
+      auth,
+      $('email').value.trim(),
+      $('password').value
+    );
+
+    $('password').value = '';
+  } catch (err) {
+    toast('Sign-in failed: ' + (err.code || err.message));
+  }
+};
+
+function setSignedIn(u) {
+  user = u;
+
+  const isAdmin =
+    !!u &&
+    u.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  $('loginBox').classList.toggle('hidden', isAdmin);
+  $('editorBox').classList.toggle('hidden', !isAdmin);
+
+  $('adminTitle').textContent =
+    isAdmin ? 'Manage products' : 'Admin login';
+
+  $('adminDescription').textContent = isAdmin
+    ? `Signed in as ${u.email}`
+    : 'Sign in using the administrator account you created in Firebase Authentication.';
+
+  if (u && !isAdmin) {
+    toast('This account is not configured as the administrator.');
+    signOut(auth);
+  }
+
+  renderProducts();
+}
+
+$('logoutBtn').onclick = () => signOut(auth);
+
+$('cancelEdit').onclick = () => resetForm();
+
+$('refreshBtn').onclick = () => {
+  listenProducts();
+  toast('Refreshing products…');
+};
+
+$('coverFile').onchange = async () => {
+  const file = $('coverFile').files?.[0];
+
+  if (!file) {
+    setCoverPreview('');
+    return;
+  }
+
+  try {
+    toast('Preparing cover image…');
+
+    const data = await compressCover(file);
+
+    setCoverPreview(data);
+    $('thumbnailUrlInput').value = '';
+
+    toast('Cover image ready');
+  } catch (err) {
+    $('coverFile').value = '';
+    setCoverPreview('');
+
+    toast(err.message || 'Could not read image');
+  }
+};
+
+$('clearCover').onclick = () => {
+  $('coverFile').value = '';
+  setCoverPreview('');
+};
+
+function resetForm() {
+  $('productForm').reset();
+  $('editId').value = '';
+
+  editing = null;
+
+  setCoverPreview('');
+
+  $('saveBtn').textContent = '＋ Publish product';
+}
+
+function startEdit(id) {
+  if (
+    !isAdminPage() ||
+    !user ||
+    user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
+  ) {
+    toast('Admin access required.');
+    return;
+  }
+
+  const p = products.find(x => x.id === id);
+
+  if (!p) return;
+
+  editing = p;
+
+  $('editId').value = id;
+  $('name').value = p.name || '';
+
+  $('category').value =
+    [...$('category').options].some(o => o.value === p.category)
+      ? p.category
+      : 'Cricket Posters';
+
+  $('type').value = p.type || 'PLP';
+  $('externalUrl').value = p.externalUrl || p.downloadUrl || '';
+
+  $('thumbnailUrlInput').value =
+    (p.thumbnailUrl || '').startsWith('data:image/')
+      ? ''
+      : (p.thumbnailUrl || '');
+
+  setCoverPreview(
+    (p.thumbnailUrl || '').startsWith('data:image/')
+      ? p.thumbnailUrl
+      : ''
+  );
+
+  $('coverFile').value = '';
+  $('description').value = p.description || '';
+
+  $('saveBtn').textContent = 'Save changes';
+
+  $('adminPanel').scrollIntoView({ behavior: 'smooth' });
+
+  toast('Editing ' + p.name);
+}
+
+$('productForm').onsubmit = async e => {
+  e.preventDefault();
+
+  if (
+    !isAdminPage() ||
+    !user ||
+    user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
+  ) {
+    toast('Please sign in as the configured admin first.');
+    return;
+  }
+
+  const rawExternalUrl = $('externalUrl').value.trim();
+  const externalUrl = validUrl(rawExternalUrl);
+
+  if (rawExternalUrl && !externalUrl) {
+    toast('Please enter a valid https:// or http:// URL.');
+    return;
+  }
+
+  const submit = $('saveBtn');
+
+  submit.disabled = true;
+  submit.textContent = 'Publishing…';
+
+  try {
+    const enteredImageUrl = $('thumbnailUrlInput').value.trim();
+    const validEnteredImage = validUrl(enteredImageUrl);
+
+    if (enteredImageUrl && !validEnteredImage) {
+      toast('Please enter a valid image URL.');
+      return;
+    }
+
+    const thumbnailUrl =
+      selectedCoverData ||
+      validEnteredImage ||
+      editing?.thumbnailUrl ||
+      '';
+
+    const downloadUrl =
+      externalUrl ||
+      editing?.downloadUrl ||
+      '';
+
+    if (!downloadUrl) {
+      toast('Paste a MediaFire share link into External download URL.');
+      return;
+    }
+
+    const data = {
+      name: $('name').value.trim(),
+      category: $('category').value,
+      type: $('type').value,
+      description: $('description').value.trim(),
+      externalUrl: downloadUrl,
+      downloadUrl,
+      thumbnailUrl,
+      updatedAt: serverTimestamp()
+    };
+
+    if (editing) {
+      await updateDoc(doc(db, 'products', editing.id), data);
+      toast('Product updated');
+    } else {
+      await addDoc(collection(db, 'products'), {
+        ...data,
+        createdAt: serverTimestamp()
+      });
+
+      toast('Product published');
+    }
+
+    resetForm();
+
+  } catch (err) {
+    console.error(err);
+
+    toast(
+      'Could not save: ' +
+      (err.message || err.code || 'unknown error')
+    );
+
+  } finally {
+    submit.disabled = false;
+    submit.textContent = editing
+      ? 'Save changes'
+      : '＋ Publish product';
+  }
+};
+
+async function removeProduct(id) {
+  if (
+    !isAdminPage() ||
+    !user ||
+    user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
+  ) {
+    toast('Admin access required.');
+    return;
+  }
+
+  const p = products.find(x => x.id === id);
+
+  if (
+    !p ||
+    !confirm(`Delete “${p.name}”? This removes its catalogue entry.`)
+  ) {
+    return;
+  }
+
+  try {
+    await deleteDoc(doc(db, 'products', id));
+    toast('Product deleted');
+  } catch (e) {
+    toast('Delete failed: ' + (e.code || e.message));
+  }
+}
+
+renderChips();
+
+if (!configReady) {
+  showConfigError();
+} else {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+
+    onAuthStateChanged(auth, setSignedIn);
+    listenProducts();
+
+  } catch (e) {
+    console.error(e);
+    showConfigError();
+    toast('Firebase configuration error');
+  }
+    }
     const u = new URL(s);
 
     return ['http:', 'https:'].includes(u.protocol)
