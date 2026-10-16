@@ -1,6 +1,4 @@
-import {
-  initializeApp
-} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 
 import {
   getAuth,
@@ -17,8 +15,6 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  query,
-  orderBy,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
@@ -45,111 +41,110 @@ const cats = [
   'Other Digital Files'
 ];
 
-let app, auth, db;
+let auth;
+let db;
 let products = [];
 let activeCategory = 'All';
 let user = null;
 let unsubscribe = null;
 let editing = null;
+let selectedCoverData = '';
 
 const isAdminPage = () =>
   location.pathname.endsWith('/admin.html') ||
   location.pathname === 'admin.html';
 
-const configReady =
-  Object.values(firebaseConfig).every(
-    v => typeof v === 'string' &&
-      v.length > 0 &&
-      !v.includes('PASTE_')
-  ) &&
-  !ADMIN_EMAIL.includes('YOUR_ADMIN');
+const isAuthorizedAdmin = () =>
+  isAdminPage() &&
+  !!user &&
+  user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-function toast(msg) {
-  $('toast').textContent = msg;
-  $('toast').classList.remove('hidden');
+function toast(message) {
+  const el = $('toast');
+  if (!el) return;
 
-  setTimeout(() => {
-    $('toast').classList.add('hidden');
-  }, 3200);
+  el.textContent = message;
+  el.classList.remove('hidden');
+
+  setTimeout(() => el.classList.add('hidden'), 3200);
 }
 
-function esc(s = '') {
-  return String(s).replace(/[&<>"']/g, c => ({
+function esc(value = '') {
+  return String(value).replace(/[&<>"']/g, char => ({
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#39;'
-  }[c]));
+  }[char]));
 }
 
-function validUrl(s) {
+function validUrl(value) {
   try {
-    const u = new URL(s);
-
-    return ['http:', 'https:'].includes(u.protocol)
-      ? u.href
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol)
+      ? url.href
       : '';
   } catch {
     return '';
   }
 }
 
-function validImage(s) {
-  return typeof s === 'string' &&
-    (
-      s.startsWith('data:image/jpeg;base64,') ||
-      s.startsWith('data:image/png;base64,') ||
-      s.startsWith('data:image/webp;base64,') ||
-      !!validUrl(s)
-    )
-    ? s
-    : '';
-}
+function validImage(value) {
+  if (typeof value !== 'string') return '';
 
-let selectedCoverData = '';
+  if (
+    value.startsWith('data:image/jpeg;base64,') ||
+    value.startsWith('data:image/png;base64,') ||
+    value.startsWith('data:image/webp;base64,')
+  ) {
+    return value;
+  }
+
+  return validUrl(value);
+}
 
 async function compressCover(file) {
   if (!file || !file.type.startsWith('image/')) {
-    throw new Error('Choose a JPG, PNG, or WebP image.');
+    throw new Error('Please select an image.');
   }
 
   const bitmap = await createImageBitmap(file);
-
-  let w = bitmap.width;
-  let h = bitmap.height;
+  let width = bitmap.width;
+  let height = bitmap.height;
 
   const maxSide = 1000;
 
-  if (Math.max(w, h) > maxSide) {
-    const scale = maxSide / Math.max(w, h);
-
-    w = Math.round(w * scale);
-    h = Math.round(h * scale);
+  if (Math.max(width, height) > maxSide) {
+    const scale = maxSide / Math.max(width, height);
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
   }
 
   const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
 
-  canvas.width = w;
-  canvas.height = h;
+  const context = canvas.getContext('2d');
 
-  const ctx = canvas.getContext('2d');
+  if (!context) {
+    bitmap.close?.();
+    throw new Error('Could not prepare the image.');
+  }
 
-  ctx.drawImage(bitmap, 0, 0, w, h);
+  context.drawImage(bitmap, 0, 0, width, height);
   bitmap.close?.();
 
-  let data = canvas.toDataURL('image/jpeg', 0.78);
-  let quality = 0.68;
+  let quality = 0.78;
+  let data = canvas.toDataURL('image/jpeg', quality);
 
-  while (data.length > 620000 && quality >= 0.35) {
-    data = canvas.toDataURL('image/jpeg', quality);
+  while (data.length > 620000 && quality > 0.38) {
     quality -= 0.08;
+    data = canvas.toDataURL('image/jpeg', quality);
   }
 
   if (data.length > 700000) {
-    throw new Error(
-      'Image is too large after compression. Please choose a smaller image.'
-    );
+    throw new Error('Image too large. Choose a smaller image.');
   }
 
   return data;
@@ -158,745 +153,156 @@ async function compressCover(file) {
 function setCoverPreview(data) {
   selectedCoverData = data || '';
 
-  $('coverPreviewWrap').classList.toggle(
-    'hidden',
-    !selectedCoverData
-  );
+  const wrap = $('coverPreviewWrap');
+  const image = $('coverPreview');
+
+  if (!wrap || !image) return;
+
+  wrap.classList.toggle('hidden', !selectedCoverData);
 
   if (selectedCoverData) {
-    $('coverPreview').src = selectedCoverData;
+    image.src = selectedCoverData;
+  } else {
+    image.removeAttribute('src');
   }
 }
 
-function showConfigError() {
-  $('count').textContent = 'Setup needed';
+function showError(message) {
+  if ($('count')) $('count').textContent = 'Connection error';
 
-  $('products').innerHTML = `
-    <div class="empty">
-      <strong>Almost ready!</strong><br>
-      Connect Firebase using the SETUP-GUIDE.txt file included
-      with this project, then reload this page.
-    </div>
-  `;
+  if ($('products')) {
+    $('products').innerHTML = `
+      <div class="empty">
+        <strong>Unable to load products.</strong><br>
+        <span class="small">${esc(message)}</span>
+      </div>
+    `;
+  }
 
-  $('adminToggle').textContent = 'Admin setup';
+  console.error(message);
 }
 
 function renderChips() {
-  $('chips').innerHTML = cats.map(c => `
+  const container = $('chips');
+  if (!container) return;
+
+  container.innerHTML = cats.map(category => `
     <button
-      class="chip ${activeCategory === c ? 'active' : ''}"
-      data-cat="${esc(c)}"
-    >${esc(c)}</button>
+      type="button"
+      class="chip ${activeCategory === category ? 'active' : ''}"
+      data-cat="${esc(category)}"
+    >${esc(category)}</button>
   `).join('');
 
-  $('chips')
-    .querySelectorAll('[data-cat]')
-    .forEach(b => {
-      b.onclick = () => {
-        activeCategory = b.dataset.cat;
-        renderChips();
-        renderProducts();
-      };
-    });
-}
-
-function renderProducts() {
-  const q = $('search').value.trim().toLowerCase();
-
-  let list = products.filter(p =>
-    (activeCategory === 'All' || p.category === activeCategory) &&
-    `${p.name} ${p.description || ''} ${p.type || ''} ${p.category || ''}`
-      .toLowerCase()
-      .includes(q)
-  );
-
-  if ($('sort').value === 'az') {
-    list.sort((a, b) => a.name.localeCompare(b.name));
-  } else {
-    list.sort(
-      (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
-    );
-  }
-
-  $('count').textContent =
-    `${list.length} item${list.length === 1 ? '' : 's'}`;
-
-  if (!list.length) {
-    $('products').innerHTML = `
-      <div class="empty">
-        <div style="font-size:32px;margin-bottom:8px">🏏</div>
-        <strong>No designs found yet</strong><br>
-        <span class="small">
-          New templates will appear here when the administrator publishes them.
-        </span>
-      </div>
-    `;
-
-    return;
-  }
-
-  const showAdminButtons =
-    isAdminPage() &&
-    !!user &&
-    user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-
-  $('products').innerHTML = list.map(p => {
-    const image = validImage(p.thumbnailUrl || '');
-
-    const thumb = image
-      ? `<img
-           src="${esc(image)}"
-           alt="${esc(p.name)} thumbnail"
-           loading="lazy"
-         >`
-      : `
-        <div>
-          ${
-            p.type === 'PDF'
-              ? '📄'
-              : p.type === 'PNG' || p.type === 'JPG'
-                ? '🖼️'
-                : p.type === 'PLP'
-                  ? '🎨'
-                  : '🏏'
-          }
-          <div style="font-size:11px;letter-spacing:2px;margin-top:4px">
-            ${esc(p.type || 'FILE')}
-          </div>
-        </div>
-      `;
-
-    const adminButtons = showAdminButtons
-      ? `
-        <div class="cardbuttons" style="margin-top:7px">
-          <button
-            class="btn-secondary"
-            data-edit="${esc(p.id)}"
-          >Edit</button>
-
-          <button
-            class="btn-danger"
-            data-delete="${esc(p.id)}"
-          >Delete</button>
-        </div>
-      `
-      : '';
-
-    return `
-      <article class="card">
-        <div class="thumb">${thumb}</div>
-
-        <div class="cardbody">
-          <span class="badge">
-            ${esc(p.category || 'Other Digital Files')}
-          </span>
-
-          <h4>${esc(p.name)}</h4>
-
-          <p>${esc(p.description || 'Digital download')}</p>
-
-          <div class="cardbuttons">
-            <button
-              class="btn-primary"
-              data-get="${esc(p.id)}"
-            >Get file ↗</button>
-          </div>
-
-          ${adminButtons}
-        </div>
-      </article>
-    `;
-  }).join('');
-
-  $('products')
-    .querySelectorAll('[data-get]')
-    .forEach(b => {
-      b.onclick = () => {
-        const p = products.find(x => x.id === b.dataset.get);
-        const url = validUrl(p?.downloadUrl || '');
-
-        if (url) {
-          window.open(url, '_blank', 'noopener,noreferrer');
-        } else {
-          toast('Download link is not available.');
-        }
-      };
-    });
-
-  $('products')
-    .querySelectorAll('[data-edit]')
-    .forEach(b => {
-      b.onclick = () => startEdit(b.dataset.edit);
-    });
-
-  $('products')
-    .querySelectorAll('[data-delete]')
-    .forEach(b => {
-      b.onclick = () => removeProduct(b.dataset.delete);
-    });
-}
-
-function listenProducts() {
-  if (unsubscribe) {
-    unsubscribe();
-  }
-
-  unsubscribe = onSnapshot(
-    query(collection(db, 'products'), orderBy('createdAt', 'desc')),
-
-    snap => {
-      products = snap.docs.map(d => {
-        const x = d.data();
-
-        return {
-          ...x,
-          id: d.id,
-          createdAtMs: x.createdAt?.toMillis?.() || 0
-        };
-      });
-
+  container.querySelectorAll('[data-cat]').forEach(button => {
+    button.onclick = () => {
+      activeCategory = button.dataset.cat;
+      renderChips();
       renderProducts();
-    },
-
-    err => {
-      console.error(err);
-
-      $('products').innerHTML = `
-        <div class="empty">
-          Could not load products. Check Firestore setup and security rules.
-        </div>
-      `;
-
-      toast('Database error: ' + err.code);
-    }
-  );
-}
-
-function openAdmin() {
-  $('adminPanel').classList.toggle('hidden');
-
-  if (!$('adminPanel').classList.contains('hidden')) {
-    $('adminPanel').scrollIntoView({ behavior: 'smooth' });
-  }
-}
-
-$('adminToggle').onclick = () => {
-  openAdmin();
-};
-
-$('search').oninput = renderProducts;
-$('sort').onchange = renderProducts;
-
-$('shareTop').onclick = async () => {
-  try {
-    if (navigator.share) {
-      await navigator.share({
-        title: 'BoundaryBox',
-        text: 'Cricket templates and digital assets',
-        url: location.href
-      });
-    } else {
-      await navigator.clipboard.writeText(location.href);
-      toast('Page link copied');
-    }
-  } catch {}
-};
-
-$('loginForm').onsubmit = async e => {
-  e.preventDefault();
-
-  try {
-    await signInWithEmailAndPassword(
-      auth,
-      $('email').value.trim(),
-      $('password').value
-    );
-
-    $('password').value = '';
-  } catch (err) {
-    toast('Sign-in failed: ' + (err.code || err.message));
-  }
-};
-
-function setSignedIn(u) {
-  user = u;
-
-  const isAdmin =
-    !!u &&
-    u.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-
-  $('loginBox').classList.toggle('hidden', isAdmin);
-  $('editorBox').classList.toggle('hidden', !isAdmin);
-
-  $('adminTitle').textContent =
-    isAdmin ? 'Manage products' : 'Admin login';
-
-  $('adminDescription').textContent = isAdmin
-    ? `Signed in as ${u.email}`
-    : 'Sign in using the administrator account you created in Firebase Authentication.';
-
-  if (u && !isAdmin) {
-    toast('This account is not configured as the administrator.');
-    signOut(auth);
-  }
-
-  renderProducts();
-}
-
-$('logoutBtn').onclick = () => signOut(auth);
-
-$('cancelEdit').onclick = () => resetForm();
-
-$('refreshBtn').onclick = () => {
-  listenProducts();
-  toast('Refreshing products…');
-};
-
-$('coverFile').onchange = async () => {
-  const file = $('coverFile').files?.[0];
-
-  if (!file) {
-    setCoverPreview('');
-    return;
-  }
-
-  try {
-    toast('Preparing cover image…');
-
-    const data = await compressCover(file);
-
-    setCoverPreview(data);
-    $('thumbnailUrlInput').value = '';
-
-    toast('Cover image ready');
-  } catch (err) {
-    $('coverFile').value = '';
-    setCoverPreview('');
-
-    toast(err.message || 'Could not read image');
-  }
-};
-
-$('clearCover').onclick = () => {
-  $('coverFile').value = '';
-  setCoverPreview('');
-};
-
-function resetForm() {
-  $('productForm').reset();
-  $('editId').value = '';
-
-  editing = null;
-
-  setCoverPreview('');
-
-  $('saveBtn').textContent = '＋ Publish product';
-}
-
-function startEdit(id) {
-  if (
-    !isAdminPage() ||
-    !user ||
-    user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
-  ) {
-    toast('Admin access required.');
-    return;
-  }
-
-  const p = products.find(x => x.id === id);
-
-  if (!p) return;
-
-  editing = p;
-
-  $('editId').value = id;
-  $('name').value = p.name || '';
-
-  $('category').value =
-    [...$('category').options].some(o => o.value === p.category)
-      ? p.category
-      : 'Cricket Posters';
-
-  $('type').value = p.type || 'PLP';
-  $('externalUrl').value = p.externalUrl || p.downloadUrl || '';
-
-  $('thumbnailUrlInput').value =
-    (p.thumbnailUrl || '').startsWith('data:image/')
-      ? ''
-      : (p.thumbnailUrl || '');
-
-  setCoverPreview(
-    (p.thumbnailUrl || '').startsWith('data:image/')
-      ? p.thumbnailUrl
-      : ''
-  );
-
-  $('coverFile').value = '';
-  $('description').value = p.description || '';
-
-  $('saveBtn').textContent = 'Save changes';
-
-  $('adminPanel').scrollIntoView({ behavior: 'smooth' });
-
-  toast('Editing ' + p.name);
-}
-
-$('productForm').onsubmit = async e => {
-  e.preventDefault();
-
-  if (
-    !isAdminPage() ||
-    !user ||
-    user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
-  ) {
-    toast('Please sign in as the configured admin first.');
-    return;
-  }
-
-  const rawExternalUrl = $('externalUrl').value.trim();
-  const externalUrl = validUrl(rawExternalUrl);
-
-  if (rawExternalUrl && !externalUrl) {
-    toast('Please enter a valid https:// or http:// URL.');
-    return;
-  }
-
-  const submit = $('saveBtn');
-
-  submit.disabled = true;
-  submit.textContent = 'Publishing…';
-
-  try {
-    const enteredImageUrl = $('thumbnailUrlInput').value.trim();
-    const validEnteredImage = validUrl(enteredImageUrl);
-
-    if (enteredImageUrl && !validEnteredImage) {
-      toast('Please enter a valid image URL.');
-      return;
-    }
-
-    const thumbnailUrl =
-      selectedCoverData ||
-      validEnteredImage ||
-      editing?.thumbnailUrl ||
-      '';
-
-    const downloadUrl =
-      externalUrl ||
-      editing?.downloadUrl ||
-      '';
-
-    if (!downloadUrl) {
-      toast('Paste a MediaFire share link into External download URL.');
-      return;
-    }
-
-    const data = {
-      name: $('name').value.trim(),
-      category: $('category').value,
-      type: $('type').value,
-      description: $('description').value.trim(),
-      externalUrl: downloadUrl,
-      downloadUrl,
-      thumbnailUrl,
-      updatedAt: serverTimestamp()
     };
-
-    if (editing) {
-      await updateDoc(doc(db, 'products', editing.id), data);
-      toast('Product updated');
-    } else {
-      await addDoc(collection(db, 'products'), {
-        ...data,
-        createdAt: serverTimestamp()
-      });
-
-      toast('Product published');
-    }
-
-    resetForm();
-
-  } catch (err) {
-    console.error(err);
-
-    toast(
-      'Could not save: ' +
-      (err.message || err.code || 'unknown error')
-    );
-
-  } finally {
-    submit.disabled = false;
-    submit.textContent = editing
-      ? 'Save changes'
-      : '＋ Publish product';
-  }
-};
-
-async function removeProduct(id) {
-  if (
-    !isAdminPage() ||
-    !user ||
-    user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
-  ) {
-    toast('Admin access required.');
-    return;
-  }
-
-  const p = products.find(x => x.id === id);
-
-  if (
-    !p ||
-    !confirm(`Delete “${p.name}”? This removes its catalogue entry.`)
-  ) {
-    return;
-  }
-
-  try {
-    await deleteDoc(doc(db, 'products', id));
-    toast('Product deleted');
-  } catch (e) {
-    toast('Delete failed: ' + (e.code || e.message));
-  }
-}
-
-renderChips();
-
-if (!configReady) {
-  showConfigError();
-} else {
-  try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-
-    onAuthStateChanged(auth, setSignedIn);
-    listenProducts();
-
-  } catch (e) {
-    console.error(e);
-    showConfigError();
-    toast('Firebase configuration error');
-  }
-    }
-    const u = new URL(s);
-
-    return ['http:', 'https:'].includes(u.protocol)
-      ? u.href
-      : '';
-  } catch {
-    return '';
-  }
-}
-
-function validImage(s) {
-  return typeof s === 'string' &&
-    (
-      s.startsWith('data:image/jpeg;base64,') ||
-      s.startsWith('data:image/png;base64,') ||
-      s.startsWith('data:image/webp;base64,') ||
-      !!validUrl(s)
-    )
-    ? s
-    : '';
-}
-
-let selectedCoverData = '';
-
-async function compressCover(file) {
-  if (!file || !file.type.startsWith('image/')) {
-    throw new Error('Choose a JPG, PNG, or WebP image.');
-  }
-
-  const bitmap = await createImageBitmap(file);
-
-  let w = bitmap.width;
-  let h = bitmap.height;
-
-  const maxSide = 1000;
-
-  if (Math.max(w, h) > maxSide) {
-    const scale = maxSide / Math.max(w, h);
-
-    w = Math.round(w * scale);
-    h = Math.round(h * scale);
-  }
-
-  const canvas = document.createElement('canvas');
-
-  canvas.width = w;
-  canvas.height = h;
-
-  const ctx = canvas.getContext('2d');
-
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close?.();
-
-  let data = canvas.toDataURL('image/jpeg', 0.78);
-  let quality = 0.68;
-
-  while (data.length > 620000 && quality >= 0.35) {
-    data = canvas.toDataURL('image/jpeg', quality);
-    quality -= 0.08;
-  }
-
-  if (data.length > 700000) {
-    throw new Error(
-      'Image is too large after compression. Please choose a smaller image.'
-    );
-  }
-
-  return data;
-}
-
-function setCoverPreview(data) {
-  selectedCoverData = data || '';
-
-  $('coverPreviewWrap').classList.toggle(
-    'hidden',
-    !selectedCoverData
-  );
-
-  if (selectedCoverData) {
-    $('coverPreview').src = selectedCoverData;
-  }
-}
-
-function showConfigError() {
-  $('count').textContent = 'Setup needed';
-
-  $('products').innerHTML = `
-    <div class="empty">
-      <strong>Almost ready!</strong><br>
-      Connect Firebase using the SETUP-GUIDE.txt file included
-      with this project, then reload this page.
-    </div>
-  `;
-
-  $('adminToggle').textContent = 'Admin setup';
-}
-
-function renderChips() {
-  $('chips').innerHTML = cats.map(c => `
-    <button
-      class="chip ${activeCategory === c ? 'active' : ''}"
-      data-cat="${esc(c)}"
-    >${esc(c)}</button>
-  `).join('');
-
-  $('chips')
-    .querySelectorAll('[data-cat]')
-    .forEach(b => {
-      b.onclick = () => {
-        activeCategory = b.dataset.cat;
-        renderChips();
-        renderProducts();
-      };
-    });
+  });
 }
 
 function renderProducts() {
-  const q = $('search').value.trim().toLowerCase();
+  const container = $('products');
+  const search = $('search');
+  const sort = $('sort');
 
-  let list = products.filter(p =>
-    (activeCategory === 'All' || p.category === activeCategory) &&
-    `${p.name} ${p.description || ''} ${p.type || ''} ${p.category || ''}`
-      .toLowerCase()
-      .includes(q)
-  );
+  if (!container || !search || !sort) return;
 
-  if ($('sort').value === 'az') {
-    list.sort((a, b) => a.name.localeCompare(b.name));
+  const term = search.value.trim().toLowerCase();
+
+  let list = products.filter(product => {
+    const categoryMatches =
+      activeCategory === 'All' ||
+      product.category === activeCategory;
+
+    const text = [
+      product.name,
+      product.description,
+      product.type,
+      product.category
+    ].join(' ').toLowerCase();
+
+    return categoryMatches && text.includes(term);
+  });
+
+  if (sort.value === 'az') {
+    list.sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''))
+    );
   } else {
-    list.sort(
-      (a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0)
+    list.sort((a, b) =>
+      (b.createdAtMs || 0) - (a.createdAtMs || 0)
     );
   }
 
-  $('count').textContent =
-    `${list.length} item${list.length === 1 ? '' : 's'}`;
+  if ($('count')) {
+    $('count').textContent =
+      `${list.length} item${list.length === 1 ? '' : 's'}`;
+  }
 
   if (!list.length) {
-    $('products').innerHTML = `
+    container.innerHTML = `
       <div class="empty">
-        <div style="font-size:32px;margin-bottom:8px">🏏</div>
-        <strong>No designs found yet</strong><br>
-        <span class="small">
-          New templates will appear here when the administrator publishes them.
-        </span>
+        <div style="font-size:32px">🏏</div>
+        <strong>No designs found</strong><br>
+        <span class="small">Try another search or category.</span>
       </div>
     `;
-
     return;
   }
 
-  const showAdminButtons =
-    isAdminPage() &&
-    !!user &&
-    user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  // Edit and Delete are rendered ONLY on admin.html
+  // after the configured administrator signs in.
+  const showAdminButtons = isAuthorizedAdmin();
 
-  $('products').innerHTML = list.map(p => {
-    const image = validImage(p.thumbnailUrl || '');
+  container.innerHTML = list.map(product => {
+    const image = validImage(product.thumbnailUrl || '');
 
-    const thumb = image
+    const thumbnail = image
       ? `<img src="${esc(image)}"
-              alt="${esc(p.name)} thumbnail"
+              alt="${esc(product.name || 'Product')}"
               loading="lazy">`
-      : `
-        <div>
-          ${p.type === 'PDF'
-            ? '📄'
-            : p.type === 'PNG' || p.type === 'JPG'
-              ? '🖼️'
-              : p.type === 'PLP'
-                ? '🎨'
-                : '🏏'}
-          <div style="font-size:11px;letter-spacing:2px;margin-top:4px">
-            ${esc(p.type || 'FILE')}
-          </div>
-        </div>
-      `;
+      : `<div>
+           ${product.type === 'PDF'
+             ? '📄'
+             : ['PNG', 'JPG'].includes(product.type)
+               ? '🖼️'
+               : product.type === 'PLP'
+                 ? '🎨'
+                 : '🏏'}
+           <div style="font-size:11px;margin-top:4px">
+             ${esc(product.type || 'FILE')}
+           </div>
+         </div>`;
 
     const adminButtons = showAdminButtons
-      ? `
-        <div class="cardbuttons" style="margin-top:7px">
-          <button
-            class="btn-secondary"
-            data-edit="${esc(p.id)}"
-          >Edit</button>
-
-          <button
-            class="btn-danger"
-            data-delete="${esc(p.id)}"
-          >Delete</button>
-        </div>
-      `
+      ? `<div class="cardbuttons" style="margin-top:7px">
+           <button type="button"
+             class="btn-secondary"
+             data-edit="${esc(product.id)}">Edit</button>
+           <button type="button"
+             class="btn-danger"
+             data-delete="${esc(product.id)}">Delete</button>
+         </div>`
       : '';
 
     return `
       <article class="card">
-        <div class="thumb">${thumb}</div>
-
+        <div class="thumb">${thumbnail}</div>
         <div class="cardbody">
           <span class="badge">
-            ${esc(p.category || 'Other Digital Files')}
+            ${esc(product.category || 'Other Digital Files')}
           </span>
 
-          <h4>${esc(p.name)}</h4>
-
-          <p>${esc(p.description || 'Digital download')}</p>
+          <h4>${esc(product.name || 'Untitled product')}</h4>
+          <p>${esc(product.description || 'Digital download')}</p>
 
           <div class="cardbuttons">
-            <button
+            <button type="button"
               class="btn-primary"
-              data-get="${esc(p.id)}"
-            >Get file ↗</button>
-
-            <button
-              class="btn-secondary"
-              data-share="${esc(p.id)}"
-              aria-label="Share ${esc(p.name)}"
-            >↗</button>
+              data-get="${esc(product.id)}">Get file ↗</button>
           </div>
 
           ${adminButtons}
@@ -905,208 +311,144 @@ function renderProducts() {
     `;
   }).join('');
 
-  $('products')
-    .querySelectorAll('[data-get]')
-    .forEach(b => {
-      b.onclick = () => {
-        const p = products.find(x => x.id === b.dataset.get);
-        const url = validUrl(p?.downloadUrl || '');
+  // Public cards have ONLY the Get File button.
+  // No product Share handler exists in this code.
+  container.querySelectorAll('[data-get]').forEach(button => {
+    button.onclick = () => {
+      const product = products.find(
+        item => item.id === button.dataset.get
+      );
 
-        if (url) {
-          window.open(url, '_blank', 'noopener,noreferrer');
-        } else {
-          toast('Download link is not available.');
-        }
-      };
-    });
+      const url = validUrl(
+        product?.downloadUrl || product?.externalUrl || ''
+      );
 
-  $('products')
-    .querySelectorAll('[data-share]')
-    .forEach(b => {
-      b.onclick = async () => {
-        const p = products.find(x => x.id === b.dataset.share);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        toast('Download link is unavailable.');
+      }
+    };
+  });
 
-        try {
-          if (navigator.share) {
-            await navigator.share({
-              title: p.name,
-              text: p.description || p.name,
-              url: p.downloadUrl || location.href
-            });
-          } else {
-            await navigator.clipboard.writeText(
-              p.downloadUrl || location.href
-            );
+  container.querySelectorAll('[data-edit]').forEach(button => {
+    button.onclick = () => startEdit(button.dataset.edit);
+  });
 
-            toast('Link copied');
-          }
-        } catch {}
-      };
-    });
-
-  $('products')
-    .querySelectorAll('[data-edit]')
-    .forEach(b => {
-      b.onclick = () => startEdit(b.dataset.edit);
-    });
-
-  $('products')
-    .querySelectorAll('[data-delete]')
-    .forEach(b => {
-      b.onclick = () => removeProduct(b.dataset.delete);
-    });
+  container.querySelectorAll('[data-delete]').forEach(button => {
+    button.onclick = () => removeProduct(button.dataset.delete);
+  });
 }
 
 function listenProducts() {
-  if (unsubscribe) {
-    unsubscribe();
+  if (!db) return;
+
+  if (unsubscribe) unsubscribe();
+
+  if ($('count')) $('count').textContent = 'Connecting…';
+
+  if ($('products')) {
+    $('products').innerHTML =
+      '<div class="empty">Connecting to the online store…</div>';
   }
 
   unsubscribe = onSnapshot(
-    query(collection(db, 'products'), orderBy('createdAt', 'desc')),
+    collection(db, 'products'),
 
-    snap => {
-      products = snap.docs.map(d => {
-        const x = d.data();
+    snapshot => {
+      products = snapshot.docs.map(document => {
+        const data = document.data();
 
         return {
-          ...x,
-          id: d.id,
-          createdAtMs: x.createdAt?.toMillis?.() || 0
+          ...data,
+          id: document.id,
+          createdAtMs: data.createdAt?.toMillis?.() || 0
         };
       });
 
       renderProducts();
     },
 
-    err => {
-      console.error(err);
-
-      $('products').innerHTML = `
-        <div class="empty">
-          Could not load products. Check Firestore setup and security rules.
-        </div>
-      `;
-
-      toast('Database error: ' + err.code);
+    error => {
+      console.error('Firestore error:', error);
+      showError(`${error.code || ''} ${error.message || ''}`);
+      toast('Database connection failed.');
     }
   );
 }
 
-function openAdmin() {
-  $('adminPanel').classList.toggle('hidden');
+function setSignedIn(currentUser) {
+  user = currentUser;
 
-  if (!$('adminPanel').classList.contains('hidden')) {
-    $('adminPanel').scrollIntoView({ behavior: 'smooth' });
+  const authorized = isAuthorizedAdmin();
+
+  $('loginBox')?.classList.toggle('hidden', authorized);
+  $('editorBox')?.classList.toggle('hidden', !authorized);
+
+  if ($('adminTitle')) {
+    $('adminTitle').textContent =
+      authorized ? 'Manage products' : 'Admin login';
   }
-}
 
-$('adminToggle').onclick = () => {
-  openAdmin();
-};
-
-$('search').oninput = renderProducts;
-$('sort').onchange = renderProducts;
-
-$('shareTop').onclick = async () => {
-  try {
-    if (navigator.share) {
-      await navigator.share({
-        title: 'BoundaryBox',
-        text: 'Cricket templates and digital assets',
-        url: location.href
-      });
-    } else {
-      await navigator.clipboard.writeText(location.href);
-      toast('Page link copied');
-    }
-  } catch {}
-};
-
-$('loginForm').onsubmit = async e => {
-  e.preventDefault();
-
-  try {
-    await signInWithEmailAndPassword(
-      auth,
-      $('email').value.trim(),
-      $('password').value
-    );
-
-    $('password').value = '';
-  } catch (err) {
-    toast('Sign-in failed: ' + (err.code || err.message));
+  if ($('adminDescription')) {
+    $('adminDescription').textContent = authorized
+      ? `Signed in as ${currentUser.email}`
+      : 'Sign in using your authorized administrator account.';
   }
-};
 
-function setSignedIn(u) {
-  user = u;
-
-  const isAdmin =
-    !!u &&
-    u.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-
-  $('loginBox').classList.toggle('hidden', isAdmin);
-  $('editorBox').classList.toggle('hidden', !isAdmin);
-
-  $('adminTitle').textContent =
-    isAdmin ? 'Manage products' : 'Admin login';
-
-  $('adminDescription').textContent = isAdmin
-    ? `Signed in as ${u.email}`
-    : 'Sign in using the administrator account you created in Firebase Authentication.';
-
-  if (u && !isAdmin) {
-    toast('This account is not configured as the administrator.');
-    signOut(auth);
+  if (currentUser && !authorized) {
+    toast('This account is not the configured administrator.');
+    signOut(auth).catch(console.error);
   }
 
   renderProducts();
 }
 
-$('logoutBtn').onclick = () => signOut(auth);
-
-$('cancelEdit').onclick = () => resetForm();
-
-$('refreshBtn').onclick = () => {
-  listenProducts();
-  toast('Refreshing products…');
-};
-
-$('coverFile').onchange = async () => {
-  const file = $('coverFile').files?.[0];
-
-  if (!file) {
-    setCoverPreview('');
+function startEdit(id) {
+  if (!isAuthorizedAdmin()) {
+    toast('Admin access required.');
     return;
   }
 
-  try {
-    toast('Preparing cover image…');
+  const product = products.find(item => item.id === id);
+  if (!product) return;
 
-    const data = await compressCover(file);
+  editing = product;
 
-    setCoverPreview(data);
-    $('thumbnailUrlInput').value = '';
+  $('editId').value = id;
+  $('name').value = product.name || '';
 
-    toast('Cover image ready');
-  } catch (err) {
-    $('coverFile').value = '';
-    setCoverPreview('');
+  const category = $('category');
+  category.value =
+    [...category.options].some(option =>
+      option.value === product.category
+    )
+      ? product.category
+      : 'Cricket Posters';
 
-    toast(err.message || 'Could not read image');
-  }
-};
+  $('type').value = product.type || 'PLP';
+  $('externalUrl').value =
+    product.externalUrl || product.downloadUrl || '';
 
-$('clearCover').onclick = () => {
+  const thumbnail = product.thumbnailUrl || '';
+
+  $('thumbnailUrlInput').value =
+    thumbnail.startsWith('data:image/') ? '' : thumbnail;
+
+  setCoverPreview(
+    thumbnail.startsWith('data:image/') ? thumbnail : ''
+  );
+
   $('coverFile').value = '';
-  setCoverPreview('');
-};
+  $('description').value = product.description || '';
+  $('saveBtn').textContent = 'Save changes';
+
+  $('adminPanel').scrollIntoView({ behavior: 'smooth' });
+}
 
 function resetForm() {
   $('productForm').reset();
   $('editId').value = '';
-
   editing = null;
 
   setCoverPreview('');
@@ -1114,181 +456,226 @@ function resetForm() {
   $('saveBtn').textContent = '＋ Publish product';
 }
 
-function startEdit(id) {
-  if (!isAdminPage() ||
-      !user ||
-      user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-    toast('Admin access required.');
-    return;
-  }
-
-  const p = products.find(x => x.id === id);
-
-  if (!p) return;
-
-  editing = p;
-
-  $('editId').value = id;
-  $('name').value = p.name || '';
-
-  $('category').value =
-    [...$('category').options].some(o => o.value === p.category)
-      ? p.category
-      : 'Cricket Posters';
-
-  $('type').value = p.type || 'PLP';
-  $('externalUrl').value = p.externalUrl || p.downloadUrl || '';
-
-  $('thumbnailUrlInput').value =
-    (p.thumbnailUrl || '').startsWith('data:image/')
-      ? ''
-      : (p.thumbnailUrl || '');
-
-  setCoverPreview(
-    (p.thumbnailUrl || '').startsWith('data:image/')
-      ? p.thumbnailUrl
-      : ''
-  );
-
-  $('coverFile').value = '';
-  $('description').value = p.description || '';
-
-  $('saveBtn').textContent = 'Save changes';
-
-  $('adminPanel').scrollIntoView({ behavior: 'smooth' });
-
-  toast('Editing ' + p.name);
-}
-
-$('productForm').onsubmit = async e => {
-  e.preventDefault();
-
-  if (!isAdminPage() ||
-      !user ||
-      user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-    toast('Please sign in as the configured admin first.');
-    return;
-  }
-
-  const name = $('name').value.trim();
-
-  const rawExternalUrl = $('externalUrl').value.trim();
-  const externalUrl = validUrl(rawExternalUrl);
-
-  if (rawExternalUrl && !externalUrl) {
-    toast('Please enter a valid https:// or http:// URL.');
-    return;
-  }
-
-  const submit = $('saveBtn');
-
-  submit.disabled = true;
-  submit.textContent = 'Publishing…';
-
-  try {
-    const enteredImageUrl = $('thumbnailUrlInput').value.trim();
-    const validEnteredImage = validUrl(enteredImageUrl);
-
-    if (enteredImageUrl && !validEnteredImage) {
-      toast('Please enter a valid image URL.');
-      return;
-    }
-
-    const thumbnailUrl =
-      selectedCoverData ||
-      validEnteredImage ||
-      editing?.thumbnailUrl ||
-      '';
-
-    const downloadUrl =
-      externalUrl ||
-      editing?.downloadUrl ||
-      '';
-
-    if (!downloadUrl) {
-      toast('Paste a MediaFire share link into External download URL.');
-      return;
-    }
-
-    const data = {
-      name,
-      category: $('category').value,
-      type: $('type').value,
-      description: $('description').value.trim(),
-      externalUrl: downloadUrl,
-      downloadUrl,
-      thumbnailUrl,
-      updatedAt: serverTimestamp()
-    };
-
-    if (editing) {
-      await updateDoc(doc(db, 'products', editing.id), data);
-      toast('Product updated');
-    } else {
-      await addDoc(collection(db, 'products'), {
-        ...data,
-        createdAt: serverTimestamp()
-      });
-
-      toast('Product published');
-    }
-
-    resetForm();
-
-  } catch (err) {
-    console.error(err);
-
-    toast(
-      'Could not save: ' +
-      (err.message || err.code || 'unknown error')
-    );
-
-  } finally {
-    submit.disabled = false;
-    submit.textContent = editing
-      ? 'Save changes'
-      : '＋ Publish product';
-  }
-};
-
 async function removeProduct(id) {
-  if (!isAdminPage() ||
-      !user ||
-      user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+  if (!isAuthorizedAdmin()) {
     toast('Admin access required.');
     return;
   }
 
-  const p = products.find(x => x.id === id);
+  const product = products.find(item => item.id === id);
 
-  if (!p || !confirm(`Delete “${p.name}”? This removes its catalogue entry.`)) {
+  if (!product ||
+      !confirm(`Delete "${product.name}" from the catalogue?`)) {
     return;
   }
 
   try {
     await deleteDoc(doc(db, 'products', id));
     toast('Product deleted');
-  } catch (e) {
-    toast('Delete failed: ' + (e.code || e.message));
+  } catch (error) {
+    console.error(error);
+    toast('Delete failed: ' + (error.code || error.message));
   }
 }
 
+// Admin login
+if ($('loginForm')) {
+  $('loginForm').onsubmit = async event => {
+    event.preventDefault();
+
+    try {
+      await signInWithEmailAndPassword(
+        auth,
+        $('email').value.trim(),
+        $('password').value
+      );
+
+      $('password').value = '';
+    } catch (error) {
+      console.error(error);
+      toast('Sign-in failed: ' + (error.code || error.message));
+    }
+  };
+}
+
+if ($('logoutBtn')) {
+  $('logoutBtn').onclick = () => signOut(auth);
+}
+
+if ($('cancelEdit')) {
+  $('cancelEdit').onclick = resetForm;
+}
+
+if ($('refreshBtn')) {
+  $('refreshBtn').onclick = () => {
+    listenProducts();
+    toast('Refreshing products…');
+  };
+}
+
+if ($('search')) $('search').oninput = renderProducts;
+if ($('sort')) $('sort').onchange = renderProducts;
+
+// Cover image
+if ($('coverFile')) {
+  $('coverFile').onchange = async () => {
+    const file = $('coverFile').files?.[0];
+
+    if (!file) {
+      setCoverPreview('');
+      return;
+    }
+
+    try {
+      toast('Preparing cover image…');
+
+      setCoverPreview(await compressCover(file));
+      $('thumbnailUrlInput').value = '';
+
+      toast('Cover image ready');
+    } catch (error) {
+      $('coverFile').value = '';
+      setCoverPreview('');
+      toast(error.message || 'Could not read image.');
+    }
+  };
+}
+
+if ($('clearCover')) {
+  $('clearCover').onclick = () => {
+    $('coverFile').value = '';
+    setCoverPreview('');
+  };
+}
+
+// Publish or update products
+if ($('productForm')) {
+  $('productForm').onsubmit = async event => {
+    event.preventDefault();
+
+    if (!isAuthorizedAdmin()) {
+      toast('Please sign in as administrator.');
+      return;
+    }
+
+    const rawUrl = $('externalUrl').value.trim();
+    const externalUrl = validUrl(rawUrl);
+
+    if (rawUrl && !externalUrl) {
+      toast('Enter a valid HTTP or HTTPS download URL.');
+      return;
+    }
+
+    const button = $('saveBtn');
+    button.disabled = true;
+
+    try {
+      const rawImage = $('thumbnailUrlInput').value.trim();
+      const imageUrl = validUrl(rawImage);
+
+      if (rawImage && !imageUrl) {
+        throw new Error('Enter a valid image URL.');
+      }
+
+      const downloadUrl =
+        externalUrl ||
+        editing?.downloadUrl ||
+        editing?.externalUrl ||
+        '';
+
+      if (!downloadUrl) {
+        throw new Error('Enter the MediaFire download link.');
+      }
+
+      const data = {
+        name: $('name').value.trim(),
+        category: $('category').value,
+        type: $('type').value,
+        description: $('description').value.trim(),
+        externalUrl: downloadUrl,
+        downloadUrl,
+        thumbnailUrl:
+          selectedCoverData ||
+          imageUrl ||
+          editing?.thumbnailUrl ||
+          '',
+        updatedAt: serverTimestamp()
+      };
+
+      button.textContent = 'Saving…';
+
+      if (editing) {
+        await updateDoc(doc(db, 'products', editing.id), data);
+        toast('Product updated');
+      } else {
+        await addDoc(collection(db, 'products'), {
+          ...data,
+          createdAt: serverTimestamp()
+        });
+        toast('Product published');
+      }
+
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      toast('Could not save: ' + (error.message || error.code));
+    } finally {
+      button.disabled = false;
+      button.textContent = editing
+        ? 'Save changes'
+        : '＋ Publish product';
+    }
+  };
+}
+
+// Share App only — no product-level Share button.
+if ($('shareTop')) {
+  $('shareTop').onclick = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'BoundaryBox',
+          text: 'Cricket templates and digital assets',
+          url: location.href
+        });
+      } else {
+        await navigator.clipboard.writeText(location.href);
+        toast('Page link copied');
+      }
+    } catch (error) {
+      if (error?.name !== 'AbortError') console.error(error);
+    }
+  };
+}
+
+if ($('adminToggle')) {
+  $('adminToggle').onclick = () => {
+    $('adminPanel')?.classList.toggle('hidden');
+  };
+}
+
+// Firebase setup
 renderChips();
 
-if (!configReady) {
-  showConfigError();
+if (
+  !firebaseConfig ||
+  !Object.values(firebaseConfig).every(
+    value => typeof value === 'string' && value.length > 0
+  ) ||
+  !ADMIN_EMAIL ||
+  !ADMIN_EMAIL.includes('@')
+) {
+  showError('Please check firebase-config.js settings.');
 } else {
   try {
-    app = initializeApp(firebaseConfig);
+    const app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
 
     onAuthStateChanged(auth, setSignedIn);
     listenProducts();
-
-  } catch (e) {
-    console.error(e);
-    showConfigError();
-    toast('Firebase configuration error');
+  } catch (error) {
+    console.error('Firebase setup error:', error);
+    showError(error.message || 'Firebase setup failed.');
   }
 }
